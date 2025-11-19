@@ -22,7 +22,7 @@ class HttpMCPClient:
     async def create(cls, mcp_server_url: str) -> 'HttpMCPClient':
         """Async factory method to create and connect MCPClient"""
         instance=cls(mcp_server_url)
-        instance.connect()
+        await instance.connect()
         return instance
 
     async def connect(self):

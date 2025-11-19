@@ -21,44 +21,50 @@ class StdioMCPClient:
     @classmethod
     async def create(cls, docker_image: str) -> 'StdioMCPClient':
         """Async factory method to create and connect MCPClient"""
-        #TODO:
-        # 1. Create instance `cls(docker_image)`
-        # 2. Connect to MCP Server (method `connect`)
-        # 3. Return created instance
-        raise NotImplementedError()
-
+        instance = cls(docker_image)
+        await instance.connect()
+        return instance
     async def connect(self):
         """Connect to MCP server via Docker"""
-        #TODO:
-        # 1. Create StdioServerParameters obj with:
-        #       - command="docker"
-        #       - args=["run", "--rm", "-i", self.docker_image]
-        # 2. Set `self._stdio_context` as `stdio_client(server_params)`
-        # 3. Create `read_stream, write_stream, _` variables from result if execution of `await self._stdio_context.__aenter__()`
-        # 4. Set `self._session_context` as `ClientSession(read_stream, write_stream)`
-        # 5. Set `self.session: ClientSession` as `await self._session_context.__aenter__()`
-        # 6. Call session initialization (initialize method) and assign results to `init_result` variable (initialize is async)
-        # 7. Log the `init_result` to see in logs MCP server capabilities
-        raise NotImplementedError()
+        server_params = StdioServerParameters(command="docker", args=["run", "--rm", "-i", self.docker_image])
+        self._stdio_context = stdio_client(server_params)
+        read_stream, write_stream, _ = await self._stdio_context.__aenter__()
+        self._session_context = ClientSession(read_stream, write_stream)
+        self.session: ClientSession = await self._session_context.__aenter__()
+        init_result = await self.session.initialize()
+        print(init_result)
 
     async def get_tools(self) -> list[dict[str, Any]]:
         """Get available tools from MCP server"""
-        #TODO:
-        # 1. Check if session is present, if not then raise an error with message that MCP client is not connected to MCP server
-        # 2. Through the session get list tools (it is async method, await it)
-        # 3. Retrieved tools are returned according MCP (Anthropic) spec. You need to covert it to the OpenAI
-        #    tool format https://platform.openai.com/docs/guides/function-calling#defining-functions
-        # 4. Log retrieved tools
-        # 5. Return tools dicts list
-        raise NotImplementedError()
+        if self.session:
+            raise Exception("MCP client is not connected to MCP server")
+        list_tools_result = await self.session.list_tools()
+
+        openai_tools: list[dict[str, Any]] = []
+        for tool in list_tools_result.tools:
+            openai_tools.append({
+                "type": "function",
+                "function": {
+                    "name": tool.name,
+                    "description": tool.description or "",
+                    "parameters": tool.inputSchema
+                }
+            })
+
+        print("Retrieved MCP tools:", openai_tools)
+
+        return openai_tools
+
+
 
     async def call_tool(self, tool_name: str, tool_args: dict[str, Any]) -> Any:
         """Call a specific tool on the MCP server"""
-        #TODO:
-        # 1. Check if session is present, if not then raise an error with message that MCP client is not connected to MCP server
-        # 2. Log the call to MCP Server (tool name, tool args, url)
-        # 3. Make tool call through session (it is async, don't forget to await)
-        # 4. Get tool execution content
-        # 5. Get first element from content (it is array with `ContentBlock`)
-        # 6. Check if element is instance of TextContent, if yes then return its text, otherwise return retrieved content
-        raise NotImplementedError()
+        if self.session:
+            raise Exception("MCP client is not connected to MCP server")
+        print(f"Log call to MCP server: tool_name - {tool_name}, tool_args - {tool_args}, url - {self.server_url}")
+        result: CallToolResult = await self.session.call_tool(tool_name, tool_args)
+        result_content = result.content
+        if isinstance(result_content[0], TextContent):
+            return result_content[0].text
+        else:
+            return result_content
