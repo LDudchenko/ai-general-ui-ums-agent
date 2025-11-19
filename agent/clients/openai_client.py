@@ -22,69 +22,78 @@ class OpenAIClient:
             tools: list[dict[str, Any]],
             tool_name_client_map: dict[str, HttpMCPClient | StdioMCPClient]
     ):
-        #TODO:
-        # 1. set tools, tool_name_client_map and model
-        # 2. Create AsyncOpenAI as `async_openai` with:
-        #   - api_key=api_key
-        raise NotImplementedError()
+        self.tools = tools
+        self.model = model
+        self.tool_name_client_map = tool_name_client_map
+        self.async_openai = AsyncOpenAI(api_key=api_key)
 
     async def response(self, messages: list[Message]) -> Message:
         """Non-streaming completion with tool calling support"""
-        #TODO:
-        # 1. Create chat completions request (self.async_openai.chat.completions.create) and get it as `response` (it is
-        #    async, don't forget about await), with:
-        #       - model=self.model
-        #       - messages=[msg.to_dict() for msg in messages]
-        #       - tools=self.tools
-        #       - temperature=0.0
-        #       - stream=False
-        # 2. Create message `ai_message` with:
-        #   - role=Role.ASSISTANT
-        #   - content=response.choices[0].message.content
-        # 3. Check if message contains tool_calls, if yes, then add them as tool_calls
-        # 4. If `ai_message` contains tool calls then:
-        #       - add `ai_message` to messages
-        #       - call `_call_tools(ai_message, messages)` (its async, don't forget about await)
-        #       - make recursive call with messages to process further
-        # 5. return ai_message
-        raise NotImplementedError()
+        response = await self.async_openai.chat.completions.create(
+            model=self.model,
+            messages=[msg.to_dict() for msg in messages],
+            tools=self.tools,
+            temperature=0.0,
+            stream=False
+        )
+        ai_message = Message(role=Role.ASSISTANT, content=response.choices[0].message.content)
+
+        if response.choices[0].message.tool_calls:
+            ai_message.tool_calls = response.choices[0].message.tool_calls
+
+        if ai_message.tool_calls:
+            messages.append(ai_message)
+            await self._call_tools(ai_message, messages)
+            await self.response(messages)
+
+        return ai_message
 
     async def stream_response(self, messages: list[Message]) -> AsyncGenerator[str, None]:
         """
         Streaming completion with tool calling support.
         Yields SSE-formatted chunks.
         """
-        #TODO:
-        # 1. Create chat completions request (self.async_openai.chat.completions.create) and get it as `stream` (it is
-        #    async, don't forget about await), with:
-        #       - model=self.model
-        #       - messages=[msg.to_dict() for msg in messages]
-        #       - tools=self.tools
-        #       - temperature=0.0
-        #       - stream=True
-        # 2. Create empty sting and assign it to `content_buffer` variable (we will collect content while streaming)
-        # 3. Create empty array with `tool_deltas` variable name
-        # 4. Make async loop through `stream` (async for chunk in stream):
-        #       - get delta `chunk.choices[0].delta` as `delta`
-        #       - if delta contains content
-        #           - create dict:{"choices": [{"delta": {"content": delta.content}, "index": 0, "finish_reason": None}]} as `chunk_data`
-        #           - `yield f"data: {json.dumps(chunk_data)}\n\n"`
-        #           - concat `content_buffer` with `delta.content`
-        #       - if delta has tool calls then extend `tool_deltas` with `delta.tool_calls`
-        # 5. If `tool_deltas` are present:
-        #       - collect tool calls with `_collect_tool_calls` method and assign to the `tool_calls` variable
-        #       - create assistant message with collected content and tool calls
-        #       - add created assistant message to `messages`
-        #       - call `_call_tools(ai_message, messages)` (its async, don't forget about await)
-        #       - make recursive call with messages to process further:
-        #           `async for chunk in self.stream_response(messages):
-        #               yield chunk
-        #            return`
-        # 6. Add assistant message with collected content
-        # 7. Create final chunk dict: {"choices": [{"delta": {}, "index": 0, "finish_reason": "stop"}]}
-        # 8. yield f"data: {json.dumps(final_chunk)}\n\n"
-        # 9. yield "data: [DONE]\n\n"
-        raise NotImplementedError()
+        stream = await self.async_openai.chat.completions.create(
+            model=self.model,
+            messages=[msg.to_dict() for msg in messages],
+            tools=self.tools,
+            temperature=0.0,
+            stream=True
+        )
+
+        content_buffer = ""
+        tool_deltas = []
+
+        async for chunk in stream:
+            delta = chunk.choices[0].delta
+            if delta.content:
+                chunk_data = {"choices": [{"delta": {"content": delta.content}, "index": 0, "finish_reason": None}]}
+                yield f"data: {json.dumps(chunk_data)}\n\n"
+                content_buffer += delta.content
+            if delta.tool_calls:
+                tool_deltas.extend(delta.tool_calls)
+
+        if tool_deltas:
+            tool_calls = self._collect_tool_calls(tool_deltas)
+            ai_message = Message(role=Role.ASSISTANT, content=content_buffer)
+            messages.append(ai_message)
+            await self._call_tools(ai_message, messages)
+            async for chunk in self.stream_response(messages):
+                yield chunk
+            return
+
+        messages.append(Message(role=Role.ASSISTANT, content=content_buffer))
+
+        final_chunk = {
+            "choices": [{
+                "delta": {},
+                "index": 0,
+                "finish_reason": "stop"
+            }]
+        }
+        yield f"data: {json.dumps(final_chunk)}\n\n"
+
+        yield "data: [DONE]\n\n"
 
     def _collect_tool_calls(self, tool_deltas):
         """Convert streaming tool call deltas to complete tool calls"""
@@ -106,7 +115,7 @@ class OpenAIClient:
 
     async def _call_tools(self, ai_message: Message, messages: list[Message], silent: bool = False):
         """Execute tool calls using MCP client"""
-        #TODO:
+        # TODO:
         # Iterate through ai_message tool_calls:
         # 1. Get tool name from tool call (function.name)
         # 2. Load tool arguments from tool call (function.arguments) through `json.loads`
