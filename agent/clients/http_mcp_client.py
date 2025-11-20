@@ -57,7 +57,7 @@ class HttpMCPClient:
 
     async def call_tool(self, tool_name: str, tool_args: dict[str, Any]) -> Any:
         """Call a specific tool on the MCP server"""
-        if self.session:
+        if not self.session:
             raise Exception("MCP client is not connected to MCP server")
         print(f"Log call to MCP server: tool_name - {tool_name}, tool_args - {tool_args}, url - {self.server_url}")
         result: CallToolResult = await self.session.call_tool(tool_name, tool_args)

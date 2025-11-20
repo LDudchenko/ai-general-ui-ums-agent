@@ -154,4 +154,5 @@ class ConversationManager:
         """Internal method to persist conversation to Redis"""
         conversation_id = conversation["id"]
         await self.redis.set(CONVERSATION_PREFIX + conversation_id, json.dumps(conversation))
-        await self.redis.zadd(CONVERSATION_LIST_KEY, conversation_id, conversation["updated_at"])
+        updated_at_timestamp = datetime.fromisoformat(conversation["updated_at"]).timestamp()
+        await self.redis.zadd(CONVERSATION_LIST_KEY, {conversation_id: updated_at_timestamp})

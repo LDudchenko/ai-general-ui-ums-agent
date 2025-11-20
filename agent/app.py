@@ -193,7 +193,7 @@ async def chat_endpoint(
                 conversation_id=conversation_id,
                 stream=True
             )
-            return StreamingResponse(result(), media_type="text/event-stream")
+            return StreamingResponse(result, media_type="text/event-stream")
 
         else:
             result = await conversation_manager.chat(

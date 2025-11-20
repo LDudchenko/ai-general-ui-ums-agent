@@ -75,7 +75,7 @@ class OpenAIClient:
 
         if tool_deltas:
             tool_calls = self._collect_tool_calls(tool_deltas)
-            ai_message = Message(role=Role.ASSISTANT, content=content_buffer)
+            ai_message = Message(role=Role.ASSISTANT, content=content_buffer, tool_calls=tool_calls)
             messages.append(ai_message)
             await self._call_tools(ai_message, messages)
             async for chunk in self.stream_response(messages):
@@ -118,12 +118,21 @@ class OpenAIClient:
         for tool_call in ai_message.tool_calls:
             name = tool_call["function"]["name"]
             arguments = json.loads(tool_call["function"]["arguments"])
-            mcp_client = self.tool_name_client_map.get("name")
+            tool_call_id = tool_call.get("id")
+            mcp_client = self.tool_name_client_map.get(name)
             if not mcp_client:
-                tool_message = Message(role=Role.TOOL, content=f"{name} tool is absent")
+                tool_message = Message(
+                    role=Role.TOOL,
+                    content=f"{name} tool is absent",
+                    tool_call_id=tool_call_id
+                )
                 messages.append(tool_message)
                 continue
             result = await mcp_client.call_tool(name, arguments)
-            tool_message = Message(role=Role.TOOL, content=result)
+            tool_message = Message(
+                role=Role.TOOL,
+                content=result,
+                tool_call_id=tool_call_id
+            )
             messages.append(tool_message)
 
