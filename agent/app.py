@@ -40,26 +40,27 @@ async def lifespan(app: FastAPI):
     tool_name_client_map: dict[str, HttpMCPClient | StdioMCPClient] = {}
     http_mcp_client = await HttpMCPClient.create(mcp_server_url="http://localhost:8005/mcp")
 
-    ums_tools = await http_mcp_client.list_tools()
-    for tool in ums_tools.tools:
-        tools.append(tool.model_dump())
-        tool_name_client_map[tool.name] = http_mcp_client
+    ums_tools = await http_mcp_client.get_tools()
+    for tool in ums_tools:
+        tools.append(tool)
+        tool_name_client_map[tool["function"]["name"]] = http_mcp_client
 
     fetch_mcp = await HttpMCPClient.create(mcp_server_url="https://remote.mcpservers.org/fetch/mcp")
 
-    fetch_tools = await fetch_mcp.list_tools()
-    for tool in fetch_tools.tools:
-        tools.append(tool.model_dump())
-        tool_name_client_map[tool.name] = fetch_mcp
+    fetch_tools = await fetch_mcp.get_tools()
+    for tool in fetch_tools:
+        tools.append(tool)
+        tool_name_client_map[tool["function"]["name"]] = fetch_mcp
 
     duck_client = await StdioMCPClient.create(docker_image="mcp/duckduckgo:latest")
 
-    duck_tools = await duck_client.list_tools()
-    for tool in duck_tools.tools:
-        tools.append(tool.model_dump())
-        tool_name_client_map[tool.name] = duck_client
+    duck_tools = await duck_client.get_tools()
+    for tool in duck_tools:
+        tools.append(tool)
+        tool_name_client_map[tool["function"]["name"]] = duck_client
 
-    openai_client = OpenAIClient(model="gpt-4o", api_base="https://ai-proxy.lab.epam.com")
+    openai_client = OpenAIClient(model="gpt-4o", api_key=os.getenv("OPENAI_API_KEY"),
+                                 tools=tools, tool_name_client_map=tool_name_client_map)
 
     redis_client = redis.Redis(host="localhost", port=6379, decode_responses=True)
 

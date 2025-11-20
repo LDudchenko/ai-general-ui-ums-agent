@@ -36,7 +36,7 @@ class HttpMCPClient:
 
     async def get_tools(self) -> list[dict[str, Any]]:
         """Get available tools from MCP server"""
-        if self.session:
+        if not self.session:
             raise Exception("MCP client is not connected to MCP server")
         list_tools_result: ListToolsResult = await self.session.list_tools()
 

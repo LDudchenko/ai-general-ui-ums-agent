@@ -28,7 +28,7 @@ class StdioMCPClient:
         """Connect to MCP server via Docker"""
         server_params = StdioServerParameters(command="docker", args=["run", "--rm", "-i", self.docker_image])
         self._stdio_context = stdio_client(server_params)
-        read_stream, write_stream, _ = await self._stdio_context.__aenter__()
+        read_stream, write_stream = await self._stdio_context.__aenter__()
         self._session_context = ClientSession(read_stream, write_stream)
         self.session: ClientSession = await self._session_context.__aenter__()
         init_result = await self.session.initialize()
@@ -36,7 +36,7 @@ class StdioMCPClient:
 
     async def get_tools(self) -> list[dict[str, Any]]:
         """Get available tools from MCP server"""
-        if self.session:
+        if not self.session:
             raise Exception("MCP client is not connected to MCP server")
         list_tools_result = await self.session.list_tools()
 
