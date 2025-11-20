@@ -27,58 +27,62 @@ class ConversationManager:
 
     async def create_conversation(self, title: str) -> dict:
         """Create a new conversation"""
-        #TODO:
-        # 1. Create conversation id `str(uuid.uuid4())`
-        # 2. Create current datatime `datetime.now(UTC).isoformat()`
-        # 3. Create `conversation` dict with:
-        #       - "id": conversation_id
-        #       - "title": title
-        #       - "messages": []
-        #       - "created_at": created datatime from 2nd point
-        #       - "updated_at": created datatime from 2nd point
-        # 4. Set conversation in redis (`set` is async, don't forget to await) with:
-        #       - f"{CONVERSATION_PREFIX}{conversation_id}"
-        #       - json.dumps(conversation)
-        # 5. Add conversation in redis (`zadd` is async, don't forget to await) with:
-        #       - CONVERSATION_LIST_KEY
-        #       - {conversation_id: datetime.now(UTC).timestamp()}
-        # 6. Log the conversation info
-        # 7. Return conversation
-        raise NotImplementedError()
+        conversation_id = str(uuid.uuid4())
+        current_datetime = datetime.now(UTC).isoformat()
+        conversation = {
+            "id": conversation_id,
+            "title": title,
+            "messages": [],
+            "created_at": current_datetime,
+            "updated_at": current_datetime
+        }
+
+        await self.redis.set(CONVERSATION_PREFIX + conversation_id, json.dumps(conversation))
+
+        await self.redis.zadd(
+            CONVERSATION_LIST_KEY,
+            {conversation_id: datetime.now(UTC).timestamp()}
+        )
+
+        print(f"Conversation Created={conversation}")
+
+        return conversation
+
 
     async def list_conversations(self) -> list[dict]:
         """List all conversations sorted by last update time"""
-        #TODO:
-        # 1. Get `conversation_ids` with `await self.redis.zrevrange(CONVERSATION_LIST_KEY, 0, -1)`
-        # 2. Create empty list as `conversations`
-        # 3. Iterate through `conversation_ids` and:
-        #       - get conversation from redis, use CONVERSATION_PREFIX before conversation_id (don't forget to await, it is async)
-        #       - if conversation is present then:
-        #           - load it with json (json.loads)
-        #           - add to `conversations` list a dict with:
-        #               - id": conv["id"]
-        #               - "title": conv["title"]
-        #               - "created_at": conv["created_at"]
-        #               - "updated_at": conv["updated_at"]
-        #               - "message_count": len(conv["messages"])
-        # 4. return conversations
-        raise NotImplementedError()
+        conversation_ids = await self.redis.zrevrange(CONVERSATION_LIST_KEY, 0, -1)
+        conversations = []
+        for conversation_id in conversation_ids:
+            conversation = await self.redis.get(CONVERSATION_PREFIX + conversation_id)
+            if conversation:
+                conv = json.loads(conversation)
+
+                conversations.append({
+                    "id": conv["id"],
+                    "title": conv["title"],
+                    "created_at": conv["created_at"],
+                    "updated_at": conv["updated_at"],
+                    "message_count": len(conv["messages"])
+                })
+
+            return conversations
 
     async def get_conversation(self, conversation_id: str) -> Optional[dict]:
         """Get a specific conversation"""
-        #TODO:
-        # 1. Get conversation from redis, use CONVERSATION_PREFIX before conversation_id (don't forget to await, it is async)
-        # 2. If nothing found then return None
-        # 3. Load it with json (json.loads)
-        # 4. return conversation
-        raise NotImplementedError()
+        conversation = await self.redis.get(CONVERSATION_PREFIX + conversation_id)
+        if conversation:
+            conv = json.loads(conversation)
+            return conv
+        else:
+            return None
 
     async def delete_conversation(self, conversation_id: str) -> bool:
         """Delete a conversation"""
-        #TODO:
-        # 1. Call delete conversation in redis, use CONVERSATION_PREFIX before conversation_id (don't forget to await, it is async)
-        # 2. Id nothing was deleted then return False, otherwise True
-        raise NotImplementedError()
+        deleted = await self.redis.delete(CONVERSATION_PREFIX + conversation_id)
+        if deleted == 0:
+            return False
+        return True
 
     async def chat(
             self,
@@ -90,15 +94,23 @@ class ConversationManager:
         Process chat messages and return AI response.
         Automatically saves conversation state.
         """
-        #TODO:
-        # 1. Log request
-        # 2. Get conversation (use method `get_conversation`)
-        # 3. Raise an error that no conversation foud if conversation is not present
-        # 4. Get `messages` from conversation, iterate through them and create array with `Message(**msg_data)`
-        # 5. If `messages` array is empty it means that it is beginning of the conversation. Add system prompt as 1st message
-        # 6. Agge `user_message` to `messages` array
-        # 7. If `stream` is true then call `_stream_chat` (without await!), otherwise call `_non_stream_chat` (with await) and return it
-        raise NotImplementedError()
+        conversation = self.get_conversation(conversation_id)
+        if not conversation:
+            raise Exception(f"Conversation {conversation_id} not found")
+
+        messages = []
+        for msg_data in conversation["messages"]:
+            messages.append(Message(**msg_data))
+
+        if messages:
+            messages.append(Message(role=Role.SYSTEM, content=SYSTEM_PROMPT))
+
+        messages.append(user_message)
+
+        if stream:
+            self._stream_chat(conversation_id, messages)
+        else:
+            return await self._non_stream_chat(conversation_id, messages)
 
 
     async def _stream_chat(
@@ -107,13 +119,10 @@ class ConversationManager:
             messages: list[Message],
     ) -> AsyncGenerator[str, None]:
         """Handle streaming chat with automatic saving"""
-        #TODO:
-        # 1. Send conversation_id first: `yield f"data: {json.dumps({'conversation_id': conversation_id})}\n\n"`
-        # 2. Stream the response - full_messages will be modified by openai_client:
-        #       `async for chunk in self.openai_client.stream_response(messages):
-        #           yield chunk`
-        # 3. Save conversation (`_save_conversation_messages` method, don't forget to await)
-        raise NotImplementedError()
+        yield f"data: {json.dumps({'conversation_id': conversation_id})}\n\n"
+        async for chunk in self.openai_client.stream_response(messages):
+            yield chunk
+        await self._save_conversation_messages(conversation_id, messages)
 
     async def _non_stream_chat(
             self,
@@ -121,13 +130,12 @@ class ConversationManager:
             messages: list[Message],
     ) -> dict:
         """Handle non-streaming chat"""
-        #TODO:
-        # 1. Call `await self.openai_client.response(messages)`
-        # 2. Save conversation (`_save_conversation_messages` method, don't forget to await)
-        # 3. Return dict with:
-        #       - "content": ai_message.content or ''
-        #       - "conversation_id": conversation_id
-        raise NotImplementedError()
+        ai_message = await self.openai_client.response(messages)
+        await self._save_conversation_messages(conversation_id, messages)
+        return {
+            "content": ai_message.content or "",
+            "conversation_id": conversation_id
+        }
 
     async def _save_conversation_messages(
             self,
@@ -135,22 +143,15 @@ class ConversationManager:
             messages: list[Message]
     ):
         """Save or update conversation messages"""
-        #TODO:
-        # 1. Get conversation from redis, use CONVERSATION_PREFIX before conversation_id (don't forget to await, it is async)
-        # 2. Load it with json (json.loads) as `conversation`
-        # 3. Create list with messages dits (use `model_dump` method) and it set `conversation` 'messages'
-        # 4. Update `updated_at` time with `datetime.now(UTC).isoformat()` in `conversation`
-        # 5. Save it with `_save_conversation` method
-        raise NotImplementedError()
+        raw_conversation = await self.redis.get(CONVERSATION_PREFIX + conversation_id)
+        conversation = json.loads(raw_conversation)
+        conversation["messages"] = [msg.model_dump() for msg in messages]
+        conversation["updated_at"] = datetime.now(UTC).isoformat()
+
+        await self._save_conversation(conversation)
 
     async def _save_conversation(self, conversation: dict):
         """Internal method to persist conversation to Redis"""
-        #TODO:
-        # 1. Get conversation id
-        # 2. Call redis set with:
-        #       - f"{CONVERSATION_PREFIX}{conversation_id}"
-        #       - json.dumps(conversation)
-        # 3. Call redis zadd with:
-        #       - CONVERSATION_LIST_KEY
-        #       - {conversation_id: datetime.now(UTC).timestamp()}
-        raise NotImplementedError()
+        conversation_id = conversation["id"]
+        await self.redis.set(CONVERSATION_PREFIX + conversation_id, json.dumps(conversation))
+        await self.redis.zadd(CONVERSATION_LIST_KEY, conversation_id, conversation["updated_at"])
