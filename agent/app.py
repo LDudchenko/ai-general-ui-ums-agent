@@ -156,7 +156,7 @@ async def list_conversations():
             title=conv["title"],
             created_at=conv["created_at"],
             updated_at=conv["updated_at"],
-            message_count=len(conv.get("messages", []))
+            message_count=conv["message_count"]
         ) for conv in conversations
     ]
 
