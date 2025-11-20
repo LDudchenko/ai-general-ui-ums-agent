@@ -94,7 +94,7 @@ class ConversationManager:
         Process chat messages and return AI response.
         Automatically saves conversation state.
         """
-        conversation = self.get_conversation(conversation_id)
+        conversation = await self.get_conversation(conversation_id)
         if not conversation:
             raise Exception(f"Conversation {conversation_id} not found")
 

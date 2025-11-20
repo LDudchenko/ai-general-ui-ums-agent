@@ -36,12 +36,48 @@ async def lifespan(app: FastAPI):
     global conversation_manager
 
     logger.info("Application startup initiated")
+    tools: list[dict] = []
+    tool_name_client_map: dict[str, HttpMCPClient | StdioMCPClient] = {}
+    http_mcp_client = await HttpMCPClient.create(mcp_server_url="http://localhost:8005/mcp")
+
+    ums_tools = await http_mcp_client.list_tools()
+    for tool in ums_tools.tools:
+        tools.append(tool.model_dump())
+        tool_name_client_map[tool.name] = http_mcp_client
+
+    fetch_mcp = await HttpMCPClient.create(mcp_server_url="https://remote.mcpservers.org/fetch/mcp")
+
+    fetch_tools = await fetch_mcp.list_tools()
+    for tool in fetch_tools.tools:
+        tools.append(tool.model_dump())
+        tool_name_client_map[tool.name] = fetch_mcp
+
+    duck_client = await StdioMCPClient.create(docker_image="mcp/duckduckgo:latest")
+
+    duck_tools = await duck_client.list_tools()
+    for tool in duck_tools.tools:
+        tools.append(tool.model_dump())
+        tool_name_client_map[tool.name] = duck_client
+
+    openai_client = OpenAIClient(model="gpt-4o", api_base="https://ai-proxy.lab.epam.com")
+
+    redis_client = redis.Redis(host="localhost", port=6379, decode_responses=True)
+
+    try:
+        redis_client.ping()
+        logger.info("Redis connection OK")
+    except Exception as e:
+        logger.error("Redis connection FAILED", exc_info=e)
+        raise
+
+    conversation_manager = ConversationManager(
+        openai_client=openai_client,
+        redis_client=redis_client
+    )
+
+    yield
 
     #TODO:
-    # 1. Create empty list with dicts with name `tools`
-    # 2. Create empty dict with name `tool_name_client_map` that applies as key `str` and sa value `HttpMCPClient | StdioMCPClient`
-    # 3. Create HttpMCPClient for UMS MCP, url is "http://localhost:8005/mcp" (HttpMCPClient has static method create,
-    #    don't forget that it is async and you need to await)
     # 4. Get tools for UMS MCP, iterate through them and add it to `tools` and and to the `tool_name_client_map`, key
     #    is tool name, value the UMS MCP Client
     # 5. Do the same as in 3 and 4 steps for Fetch MCP, url is "https://remote.mcpservers.org/fetch/mcp"
@@ -50,21 +86,17 @@ async def lifespan(app: FastAPI):
     # 8. Create Redis client (redis.Redis). Host is localhost, port is 6379, and decode response
     # 9. ping to redis to check if `its alive (ping method in redis client)
     # 10. Create ConversationManager with OpenAI clien and Redis client and assign to `conversation_manager` (global variable)
-    yield
 
 
 app = FastAPI(
-    #TODO: add `lifespan` param from above, like:
-    # - lifespan=lifespan
+    lifespan=lifespan
 )
 app.add_middleware(
-    #TODO:
-    # Since we will run it locally there will be some issues from FrontEnd side with CORS, and its okay for local setup to disable them:
-    #   - CORSMiddleware,
-    #   - allow_origins=["*"]
-    #   - allow_credentials=True
-    #   - allow_methods=["*"]
-    #   - allow_headers=["*"]
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 
@@ -101,6 +133,89 @@ async def health():
         "conversation_manager_initialized": conversation_manager is not None
     }
 
+@app.post("/conversations")
+async def create_conversation(request: CreateConversationRequest):
+    title = request.title
+    conversation = await conversation_manager.create_conversation(title)
+    return ConversationSummary(
+        id=conversation["id"],
+        title=conversation["title"],
+        created_at=conversation["created_at"],
+        updated_at=conversation["updated_at"],
+        message_count=len(conversation["messages"])
+    )
+
+
+@app.get("/conversations")
+async def health():
+    """Health check endpoint"""
+    conversations = await conversation_manager.list_conversations()
+    for conversation in conversations:
+        ConversationSummary
+    return {
+        "status": "healthy",
+        "conversation_manager_initialized": conversation_manager is not None
+    }
+
+@app.get("/conversations")
+async def list_conversations():
+    """List all conversations"""
+    conversations = await conversation_manager.list_conversations()
+    return [
+        ConversationSummary(
+            id=conv["id"],
+            title=conv["title"],
+            created_at=conv["created_at"],
+            updated_at=conv["updated_at"],
+            message_count=conv["message_count"]
+        ) for conv in conversations
+    ]
+
+@app.get("/conversations/{conversation_id}")
+async def get_conversation(conversation_id: str):
+    conversation = await conversation_manager.get_conversation(conversation_id)
+    if not conversation:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    return ConversationSummary(
+            id=conversation["id"],
+            title=conversation["title"],
+            created_at=conversation["created_at"],
+            updated_at=conversation["updated_at"],
+            message_count=conversation["message_count"]
+        )
+
+@app.delete("/conversations/{conversation_id}")
+async def delete_conversation(conversation_id: str):
+    deleted = await conversation_manager.delete_conversation(conversation_id)
+    return {
+        "message": f"Conversation {conversation_id} deleted" if deleted else "Conversation not found"
+    }
+
+
+@app.post("/conversations/{conversation_id}/chat")
+async def chat_endpoint(
+        conversation_id: str,
+        request: ChatRequest
+):
+    try:
+        if request.stream:
+            result = await conversation_manager.chat(
+                user_message=request.message,
+                conversation_id=conversation_id,
+                stream=True
+            )
+            return StreamingResponse(result, media_type="text/event-stream")
+
+        else:
+            result = await conversation_manager.chat(
+                user_message=request.message,
+                conversation_id=conversation_id,
+                stream=False
+            )
+            return ChatResponse(**result)
+
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 #TODO:
 # Create such endpoints:
@@ -119,9 +234,8 @@ if __name__ == "__main__":
     import uvicorn
     logger.info("Starting UMS Agent server")
     uvicorn.run(
-        #TODO:
-        #  - app
-        #  - host="0.0.0.0"
-        #  - port=8011
-        #  - log_level="debug"
+        app,
+        host="0.0.0.0",
+        port=8011,
+        log_level="debug"
     )
