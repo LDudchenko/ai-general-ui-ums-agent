@@ -59,7 +59,7 @@ class HttpMCPClient:
         """Call a specific tool on the MCP server"""
         if not self.session:
             raise Exception("MCP client is not connected to MCP server")
-        print(f"Log call to MCP server: tool_name - {tool_name}, tool_args - {tool_args}, url - {self.server_url}")
+        print(f"Call to MCP server: tool_name - {tool_name}, tool_args - {tool_args}, url - {self.server_url}")
         result: CallToolResult = await self.session.call_tool(tool_name, tool_args)
         result_content = result.content
         if isinstance(result_content[0], TextContent):
