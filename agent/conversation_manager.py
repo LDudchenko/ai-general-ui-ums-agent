@@ -66,7 +66,7 @@ class ConversationManager:
                     "message_count": len(conv["messages"])
                 })
 
-            return conversations
+        return conversations
 
     async def get_conversation(self, conversation_id: str) -> Optional[dict]:
         """Get a specific conversation"""
