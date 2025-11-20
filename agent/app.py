@@ -65,7 +65,7 @@ async def lifespan(app: FastAPI):
     redis_client = redis.Redis(host="localhost", port=6379, decode_responses=True)
 
     try:
-        redis_client.ping()
+        await redis_client.ping()
         logger.info("Redis connection OK")
     except Exception as e:
         logger.error("Redis connection FAILED", exc_info=e)
@@ -146,18 +146,6 @@ async def create_conversation(request: CreateConversationRequest):
         message_count=len(conversation["messages"])
     )
 
-
-@app.get("/conversations")
-async def health():
-    """Health check endpoint"""
-    conversations = await conversation_manager.list_conversations()
-    for conversation in conversations:
-        ConversationSummary
-    return {
-        "status": "healthy",
-        "conversation_manager_initialized": conversation_manager is not None
-    }
-
 @app.get("/conversations")
 async def list_conversations():
     """List all conversations"""
@@ -168,7 +156,7 @@ async def list_conversations():
             title=conv["title"],
             created_at=conv["created_at"],
             updated_at=conv["updated_at"],
-            message_count=conv["message_count"]
+            message_count=len(conv.get("messages", []))
         ) for conv in conversations
     ]
 
@@ -182,7 +170,7 @@ async def get_conversation(conversation_id: str):
             title=conversation["title"],
             created_at=conversation["created_at"],
             updated_at=conversation["updated_at"],
-            message_count=conversation["message_count"]
+            message_count=len(conversation["messages"])
         )
 
 @app.delete("/conversations/{conversation_id}")

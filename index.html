@@ -486,18 +486,18 @@
 
     async function loadConversations() {
         try {
-            //TODO:
-            // 1. Call `await fetch(`${API_URL}/conversations`)` and assign result as `response` variable
-            // 2. Get json from response `await response.json()` and assign to `conversations` variable
-            // 3. Clean conversations list `conversationsList.innerHTML = ''`
-            // 4. If `conversations` length is 0 then set `conversationsList.innerHTML` as
-            //    - '
-            //    <div style="text-align: center; padding: 20px; color: #6c757d;">
-            //        No conversations yet. Click "New Chat" to start!
-            //    </div>
-            //    '
-            //    otherwise iterate through `conversations` and call for each conversation the `addConversationToSidebar` function
-            throw new Error('Not implemented');
+            response = await fetch(`${API_URL}/conversations`)
+            conversations = await response.json()
+            conversationsList.innerHTML = ''
+            if (!conversations || conversations.length === 0) {
+                conversationsList.innerHTML = `
+                    <div style="text-align: center; padding: 20px; color: #6c757d;">
+                        No conversations yet. Click "New Chat" to start!
+                    </div>
+                `;
+            } else {
+                conversations.forEach(conv => addConversationToSidebar(conv));
+            }
         } catch (error) {
             console.error('Error loading conversations:', error);
             conversationsList.innerHTML = `
