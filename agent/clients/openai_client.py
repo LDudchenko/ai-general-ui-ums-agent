@@ -115,13 +115,15 @@ class OpenAIClient:
 
     async def _call_tools(self, ai_message: Message, messages: list[Message], silent: bool = False):
         """Execute tool calls using MCP client"""
-        # TODO:
-        # Iterate through ai_message tool_calls:
-        # 1. Get tool name from tool call (function.name)
-        # 2. Load tool arguments from tool call (function.arguments) through `json.loads`
-        # 3. Get MCP client from `tool_name_client_map` via tool name
-        # 4. If no MCP Client found then create tool message with info in content that such tool is absent, add it to
-        #    `messages`, and `continue`
-        # 5. Make tool call with MCP client (its async!)
-        # 6. Add tool message with content with tool execution result to `messages`
-        raise NotImplementedError()
+        for tool_call in ai_message.tool_calls:
+            name = tool_call["function"]["name"]
+            arguments = json.loads(tool_call["function"]["arguments"])
+            mcp_client = self.tool_name_client_map.get("name")
+            if not mcp_client:
+                tool_message = Message(role=Role.TOOL, content=f"{name} tool is absent")
+                messages.append(tool_message)
+                continue
+            result = await mcp_client.call_tool(name, arguments)
+            tool_message = Message(role=Role.TOOL, content=result)
+            messages.append(tool_message)
+
