@@ -165,13 +165,7 @@ async def get_conversation(conversation_id: str):
     conversation = await conversation_manager.get_conversation(conversation_id)
     if not conversation:
         raise HTTPException(status_code=404, detail="Conversation not found")
-    return ConversationSummary(
-            id=conversation["id"],
-            title=conversation["title"],
-            created_at=conversation["created_at"],
-            updated_at=conversation["updated_at"],
-            message_count=len(conversation["messages"])
-        )
+    return conversation
 
 @app.delete("/conversations/{conversation_id}")
 async def delete_conversation(conversation_id: str):
