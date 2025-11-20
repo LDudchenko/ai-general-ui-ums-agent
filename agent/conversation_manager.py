@@ -108,7 +108,7 @@ class ConversationManager:
         messages.append(user_message)
 
         if stream:
-            self._stream_chat(conversation_id, messages)
+            return self._stream_chat(conversation_id, messages)
         else:
             return await self._non_stream_chat(conversation_id, messages)
 
